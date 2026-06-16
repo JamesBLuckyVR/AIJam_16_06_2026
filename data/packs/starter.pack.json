@@ -1,0 +1,80 @@
+{
+  "id": "starter",
+  "displayName": "Starter Pack",
+  "cost": 4.99,
+  "artTexture": "",
+  "cards": [
+    {
+      "id": "s001",
+      "name": "Common Slime",
+      "rarity": "Common",
+      "baseCost": 0.50,
+      "drawChance": 0.25,
+      "characterTexture": "",
+      "faceTexture": ""
+    },
+    {
+      "id": "s002",
+      "name": "Forest Sprite",
+      "rarity": "Common",
+      "baseCost": 0.75,
+      "drawChance": 0.22,
+      "characterTexture": "",
+      "faceTexture": ""
+    },
+    {
+      "id": "s003",
+      "name": "Stone Golem",
+      "rarity": "Common",
+      "baseCost": 1.00,
+      "drawChance": 0.20,
+      "characterTexture": "",
+      "faceTexture": ""
+    },
+    {
+      "id": "s004",
+      "name": "Wind Hawk",
+      "rarity": "Uncommon",
+      "baseCost": 3.00,
+      "drawChance": 0.13,
+      "characterTexture": "",
+      "faceTexture": ""
+    },
+    {
+      "id": "s005",
+      "name": "Shadow Wolf",
+      "rarity": "Uncommon",
+      "baseCost": 4.00,
+      "drawChance": 0.10,
+      "characterTexture": "",
+      "faceTexture": ""
+    },
+    {
+      "id": "s006",
+      "name": "Fire Dragon",
+      "rarity": "Rare",
+      "baseCost": 12.00,
+      "drawChance": 0.07,
+      "characterTexture": "",
+      "faceTexture": ""
+    },
+    {
+      "id": "s007",
+      "name": "Thunder Phoenix",
+      "rarity": "UltraRare",
+      "baseCost": 30.00,
+      "drawChance": 0.02,
+      "characterTexture": "",
+      "faceTexture": ""
+    },
+    {
+      "id": "s008",
+      "name": "Void Serpent",
+      "rarity": "Secret",
+      "baseCost": 80.00,
+      "drawChance": 0.01,
+      "characterTexture": "",
+      "faceTexture": ""
+    }
+  ]
+}

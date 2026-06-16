@@ -1,0 +1,10 @@
+{
+  "id": "collectors-vault",
+  "displayName": "Collector's Vault",
+  "description": "Premium boutique for serious collectors. Better buy prices, higher sell margins.",
+  "seed": 2002,
+  "markupRange": 0.05,
+  "buyMultiplier": 0.65,
+  "sellMultiplier": 1.10,
+  "inventory": ["premium"]
+}

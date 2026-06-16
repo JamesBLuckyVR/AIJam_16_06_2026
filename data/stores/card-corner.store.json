@@ -1,0 +1,10 @@
+{
+  "id": "card-corner",
+  "displayName": "Card Corner",
+  "description": "A cozy local shop. Fair prices, friendly staff.",
+  "seed": 1001,
+  "markupRange": 0.10,
+  "buyMultiplier": 0.50,
+  "sellMultiplier": 1.00,
+  "inventory": ["starter", "premium"]
+}
