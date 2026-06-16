@@ -1,0 +1,4 @@
+{
+  "packs": ["starter.pack.json", "premium.pack.json"],
+  "stores": ["card-corner.store.json", "collectors-vault.store.json"]
+}

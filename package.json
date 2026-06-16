@@ -1,0 +1,27 @@
+{
+  "name": "card-pack-simulator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "deploy": "npm run build && gh-pages -d dist",
+    "cap:sync": "cap sync",
+    "cap:android": "cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/core": "^6.0.0",
+    "gsap": "^3.12.5",
+    "three": "^0.167.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.0.0",
+    "@types/three": "^0.167.0",
+    "gh-pages": "^6.1.1",
+    "typescript": "^5.4.5",
+    "vite": "^5.2.0"
+  }
+}
