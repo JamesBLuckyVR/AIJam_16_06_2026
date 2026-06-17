@@ -1,12 +1,12 @@
 import type { CardDefinition, GameConfig, PackDefinition, StoreDefinition } from '../types/index.js';
 import { mulberry32 } from '../utils/prng.js';
-import { composeSeed, utcDayNumber } from '../utils/seed.js';
+import { composeSeed, utcHourNumber } from '../utils/seed.js';
 
 export class MarketSystem {
   constructor(private readonly config: GameConfig) {}
 
   getDailyPrice(baseCost: number, storeSeed: number, markupRange: number, itemId: string): number {
-    const day = utcDayNumber();
+    const day = utcHourNumber();
     const seed = composeSeed(this.config.marketTrendSeed, storeSeed, itemId, day);
     const rng = mulberry32(seed);
 

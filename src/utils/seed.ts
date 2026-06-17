@@ -15,6 +15,6 @@ export function composeSeed(
   return (marketTrendSeed ^ storeSeed ^ hashString(itemId) ^ dayNumber) >>> 0;
 }
 
-export function utcDayNumber(): number {
-  return Math.floor(Date.now() / 86400000);
+export function utcHourNumber(): number {
+  return Math.floor(Date.now() / 3600000);
 }

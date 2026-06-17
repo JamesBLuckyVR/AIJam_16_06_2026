@@ -10,6 +10,7 @@ export class HUD {
   private readonly cutHintEl: HTMLElement;
   private readonly priceLabelsEl: HTMLElement;
   private readonly cardActionsEl: HTMLElement;
+  private readonly versionEl: HTMLElement;
 
   constructor() {
     this.moneyEl      = document.getElementById('money-display')!;
@@ -20,10 +21,20 @@ export class HUD {
     this.cutHintEl    = document.getElementById('cut-hint')!;
     this.priceLabelsEl= document.getElementById('price-labels')!;
     this.cardActionsEl= document.getElementById('card-actions')!;
+    this.versionEl    = document.getElementById('version-display')!;
   }
 
   setMoney(amount: number): void {
     this.moneyEl.textContent = `$${amount.toFixed(2)}`;
+  }
+
+  showVersion(version: string): void {
+    this.versionEl.textContent = `v${version}`;
+    this.versionEl.style.display = 'block';
+  }
+
+  hideVersion(): void {
+    this.versionEl.style.display = 'none';
   }
 
   setSceneTitle(title: string): void {
@@ -115,6 +126,7 @@ export class HUD {
     this.showSwipeHint(false);
     this.showCutHint(false);
     this.showCardActions(false);
+    this.hideVersion();
   }
 
   showTransition(fadeIn: boolean): void {

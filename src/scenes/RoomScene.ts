@@ -16,6 +16,9 @@ export class RoomScene extends BaseScene {
     ctx.hud.addButton('🃏  My Packs', () => ctx.goto('pack-shelf'), 'primary');
     ctx.hud.addButton('📦  Collection', () => ctx.goto('collection'));
     ctx.hud.addButton('🏪  Visit Store', () => ctx.goto('store-select'));
+    ctx.hud.addButton('💼  Work', () => { ctx.inventory.earn(1); ctx.save(); });
+
+    ctx.hud.showVersion(ctx.config.version);
 
     const bg = document.getElementById('room-bg')!;
     bg.style.background = 'radial-gradient(ellipse at 40% 60%, #2a1a3e 0%, #0d0d1a 100%)';

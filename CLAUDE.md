@@ -4,6 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 > **IMPORTANT**: Update this file whenever any design decision about the game changes.
 
+> **VERSIONING**: Every time a prompt to Claude results in completed changes, increment the version number in `public/data/game.config.json` by `0.01` (e.g. `"0.02"` → `"0.03"`). The version is displayed in the bottom-left corner of the Room scene and must always reflect the current state of the build.
+
 ## Project
 
 **AIJam_16_06_2026** — a card pack opening simulator game jam project started 2026-06-16 by James Brooks (JamesBLuckyVR).
@@ -73,7 +75,7 @@ SUMMARY   → show kept cards, return button
 - Glass counter with cards and packs laid out in 3D
 - Price labels rendered as DOM `<div>` elements anchored to 3D positions via `Vector3.project(camera)`
 - Buy and sell interactions
-- Multiple stores exist, each with different daily pricing
+- Multiple stores exist, each with different hourly pricing
 
 ### Store Select
 - List of available stores with names and flavor text
@@ -92,10 +94,12 @@ SUMMARY   → show kept cards, return button
 - Holo cards: custom GLSL `ShaderMaterial` (see Holographic Shader below)
 
 ### Packs
-- Two meshes: `packTop` (upper ~40%) + `packBottom` (lower ~60%)
-- Positioned together to appear as a single pack
-- Both share the pack art texture with UV offset to show correct portion
-- Cut animation: GSAP timeline moves `packTop` along the cut angle + upward + slight twist
+- Three meshes: `packBottom` (body, lower 82%) + `packTop` (seal strip, upper 18%) + `seamMesh` (crimp seam detail)
+- `PACK_DEPTH = 0.05` — thin profile matching a real plastic booster pack (was 0.25)
+- Body front face: pack art texture; body edges and back: metallic foil material
+- Seal strip: all metallic foil, slightly wider/deeper than body so it visually "clamps over" the edges
+- Seam mesh: a thin darker strip sitting at the join between seal and body
+- Cut animation: GSAP timeline moves `packTop` + `seamMesh` together along cut angle + upward + twist
 
 ### Holographic Shader
 GLSL `ShaderMaterial` uniforms: `uCardTexture`, `uTiltX`, `uTiltY` (−1..1), `uTime`
@@ -190,7 +194,7 @@ public/data/
 
 ## Market Pricing System
 
-Prices are **deterministic per UTC day** — all players see the same prices at any given store on the same calendar day.
+Prices are **deterministic per UTC hour** — all players see the same prices at any given store within the same UTC hour.
 
 ### Algorithm
 ```typescript
@@ -199,7 +203,7 @@ function composeSeed(marketTrendSeed, storeSeed, itemId, dayNumber): number {
 }
 
 getDailyPrice(baseCost, storeSeed, markupRange, itemId): number {
-  const day = Math.floor(Date.now() / 86400000); // UTC day number
+  const day = Math.floor(Date.now() / 3600000); // UTC hour number
   const rng = mulberry32(composeSeed(...));
   const marketFactor = 0.7 + rng() * 0.6;        // global trend: ±30% from base
   const storeFactor  = (1 - markupRange) + rng() * (2 * markupRange); // store markup

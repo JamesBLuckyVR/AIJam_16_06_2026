@@ -43,6 +43,7 @@ export interface StoreDefinition {
 }
 
 export interface GameConfig {
+  version: string;
   cardsPerPack: number;
   holoChance: number;
   reverseHoloChance: number;

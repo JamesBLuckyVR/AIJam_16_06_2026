@@ -13,8 +13,7 @@ import { clamp } from '../utils/math.js';
 
 type State = 'INSPECT' | 'CUTTING' | 'CUT_ANIM' | 'REVEALING' | 'SWIPING' | 'SUMMARY';
 
-const SWIPE_VELOCITY_THRESHOLD = 0.8;
-const SWIPE_DISTANCE_THRESHOLD = 80;
+// All cards drawn from a pack are automatically kept — no discard mechanic.
 
 export class PackOpeningScene extends BaseScene {
   private packMesh!: PackMesh;
@@ -22,13 +21,7 @@ export class PackOpeningScene extends BaseScene {
   private drawnCards: CardInstance[] = [];
   private currentCardIdx = 0;
   private state: State = 'INSPECT';
-  private keptCards: CardInstance[] = [];
   private elapsedTime = 0;
-
-  private cutStart: Vec2 | null = null;
-  private cutLine: { start: Vec2; end: Vec2 } | null = null;
-  private isDraggingCard = false;
-  private cardDragStart: Vec2 = { x: 0, y: 0 };
 
   async init(ctx: SceneContext, params?: unknown): Promise<void> {
     this.ctx = ctx;
@@ -57,34 +50,51 @@ export class PackOpeningScene extends BaseScene {
     ctx.orientation.requestAndStart();
   }
 
+  // Converts screen pixels → world units at the card/pack plane (z=0).
+  private _pixelToWorld(ctx: SceneContext): number {
+    const camZ = ctx.engine.camera.position.z;
+    const vFov = THREE.MathUtils.degToRad(ctx.engine.camera.fov);
+    return (2 * camZ * Math.tan(vFov / 2)) / window.innerHeight;
+  }
+
   private _enterInspect(ctx: SceneContext): void {
     this.state = 'INSPECT';
     ctx.hud.showCutHint(true);
 
-    ctx.pointer.on('drag', (e: DragEvent) => {
+    // Mode is determined at dragstart and locked until dragend.
+    let packMode: 'rotate' | 'cut' | null = null;
+    let cutStart: Vec2 | null = null;
+
+    ctx.pointer.on('dragstart', (e: DragEvent) => {
       if (this.state !== 'INSPECT') return;
+      const bounds = this._getPackScreenBounds(ctx);
+      if (GestureDetector.isInPackInnerZone(e.start, bounds)) {
+        packMode = 'rotate';
+      } else {
+        packMode = 'cut';
+        cutStart = { ...e.start };
+      }
+    });
+
+    ctx.pointer.on('drag', (e: DragEvent) => {
+      if (this.state !== 'INSPECT' || packMode !== 'rotate') return;
       this.packMesh.group.rotation.y += e.delta.x * 0.008;
       this.packMesh.group.rotation.x += e.delta.y * 0.008;
       this.packMesh.group.rotation.x = clamp(this.packMesh.group.rotation.x, -0.8, 0.8);
     });
 
-    ctx.pointer.on('dragstart', (e: DragEvent) => {
-      if (this.state !== 'INSPECT') return;
-      this.cutStart = e.start;
-    });
-
     ctx.pointer.on('dragend', async (e: DragEvent) => {
       if (this.state !== 'INSPECT') return;
-      if (!this.cutStart) return;
-
-      const rect = this._getPackScreenBounds(ctx);
-      const result = GestureDetector.detectCut(this.cutStart, e.current, rect);
-
-      if (result.isCut) {
-        ctx.hud.showCutHint(false);
-        await this._doCut(result.angle, ctx);
+      if (packMode === 'cut' && cutStart) {
+        const bounds = this._getPackScreenBounds(ctx);
+        const result = GestureDetector.detectCut(cutStart, e.current, bounds);
+        if (result.isCut) {
+          ctx.hud.showCutHint(false);
+          await this._doCut(result.angle, ctx);
+        }
       }
-      this.cutStart = null;
+      packMode = null;
+      cutStart = null;
     });
   }
 
@@ -124,13 +134,13 @@ export class PackOpeningScene extends BaseScene {
     ctx.pointer.on('dragend', () => {});
 
     await this.packMesh.animateCut(angle);
+    await this.packMesh.animateBodyExit();
     await this._revealCards(ctx);
   }
 
   private async _revealCards(ctx: SceneContext): Promise<void> {
     this.state = 'REVEALING';
     this.currentCardIdx = 0;
-    this.keptCards = [];
 
     this.cardMeshes = this.drawnCards.map((card) => {
       const cm = new CardMesh(card);
@@ -161,69 +171,142 @@ export class PackOpeningScene extends BaseScene {
 
     this.state = 'SWIPING';
     ctx.hud.showSwipeHint(true);
-    ctx.hud.showCardActions(true,
-      () => this._throwCard('discard', ctx),
-      () => this._throwCard('keep', ctx),
-    );
 
     this._setupSwipeListeners(ctx);
   }
 
   private _setupSwipeListeners(ctx: SceneContext): void {
     const cm = this.cardMeshes[this.currentCardIdx];
+    const pixToWorld = this._pixelToWorld(ctx);
+
+    const MAX_TILT    = 0.35;  // radians — max card tilt during rotate mode
+    const TILT_FACTOR = 0.004; // radians per pixel offset from press start
+    const THROW_VEL   = 0.5;   // px/ms to auto-throw on release
+    const THROW_DIST  = 0.5;   // world units from origin to auto-throw on release
+
+    const raycaster = new THREE.Raycaster();
+
+    let cardMode: 'idle' | 'rotate' | 'swipe' = 'idle';
+    let gestureStart: Vec2 = { x: 0, y: 0 };
+    let swipeModeStart: Vec2 = { x: 0, y: 0 };
+
+    ctx.pointer.on('dragstart', (e: DragEvent) => {
+      if (this.state !== 'SWIPING') return;
+      // Only enter interact mode when the press lands on the card.
+      const ndc = ctx.pointer.clientToNDC(e.start);
+      raycaster.setFromCamera(new THREE.Vector2(ndc.x, ndc.y), ctx.engine.camera);
+      if (raycaster.intersectObject(cm.mesh, false).length > 0) {
+        cardMode = 'rotate';
+        gestureStart = { ...e.start };
+      } else {
+        cardMode = 'idle';
+      }
+    });
 
     ctx.pointer.on('drag', (e: DragEvent) => {
-      if (this.state !== 'SWIPING' || this.isDraggingCard) return;
-      const dx = e.current.x - e.start.x;
-      cm.mesh.position.x = dx * 0.01;
-      cm.mesh.rotation.z = -dx * 0.0003;
+      if (this.state !== 'SWIPING' || cardMode === 'idle') return;
 
-      const pct = dx / (window.innerWidth * 0.5);
+      const offsetX = e.current.x - gestureStart.x;
+      const offsetY = e.current.y - gestureStart.y;
+
+      if (cardMode === 'rotate') {
+        // Swipe starts only when the pointer leaves the card bounds.
+        const ndc = ctx.pointer.clientToNDC(e.current);
+        raycaster.setFromCamera(new THREE.Vector2(ndc.x, ndc.y), ctx.engine.camera);
+        const onCard = raycaster.intersectObject(cm.mesh, false).length > 0;
+
+        if (!onCard) {
+          // Pointer left the card — transition to free-swipe.
+          cardMode = 'swipe';
+          swipeModeStart = { ...e.current };
+          gsap.killTweensOf(cm.mesh.rotation);
+          gsap.to(cm.mesh.rotation, { x: 0, y: 0, z: 0, duration: 0.15, ease: 'power2.out' });
+          // Fall through so position update runs on this same event.
+        } else {
+          // Still on card — tilt proportional to offset from press start.
+          cm.mesh.rotation.y = clamp( offsetX * TILT_FACTOR, -MAX_TILT, MAX_TILT);
+          cm.mesh.rotation.x = clamp(-offsetY * TILT_FACTOR, -MAX_TILT, MAX_TILT);
+          return;
+        }
+      }
+
+      // Free-swipe: card follows finger in all directions.
+      const swOffX = e.current.x - swipeModeStart.x;
+      const swOffY = e.current.y - swipeModeStart.y;
+      cm.mesh.position.x = swOffX * pixToWorld;
+      cm.mesh.position.y = -swOffY * pixToWorld;
     });
 
     ctx.pointer.on('dragend', (e: DragEvent) => {
       if (this.state !== 'SWIPING') return;
 
-      const vel = GestureDetector.swipeVelocity(e.positions, e.timestamps);
-      const dist = e.current.x - e.start.x;
+      if (cardMode === 'idle') return;
 
-      if (vel > SWIPE_VELOCITY_THRESHOLD || dist > SWIPE_DISTANCE_THRESHOLD) {
-        this._throwCard('keep', ctx);
-      } else if (vel < -SWIPE_VELOCITY_THRESHOLD || dist < -SWIPE_DISTANCE_THRESHOLD) {
-        this._throwCard('discard', ctx);
+      if (cardMode === 'rotate') {
+        // Short press — snap rotation back to flat.
+        gsap.to(cm.mesh.rotation, { x: 0, y: 0, z: 0, duration: 0.2, ease: 'power2.out' });
+        cardMode = 'idle';
+        return;
+      }
+
+      // Swipe mode — decide throw vs snap-back.
+      const vel = GestureDetector.swipeVelocity2D(e.positions, e.timestamps);
+      const velMag = Math.sqrt(vel.x * vel.x + vel.y * vel.y);
+      const distFromCenter = Math.sqrt(cm.mesh.position.x ** 2 + cm.mesh.position.y ** 2);
+      cardMode = 'idle';
+
+      if (velMag > THROW_VEL || distFromCenter > THROW_DIST) {
+        this._throwCard(vel, ctx);
       } else {
-        gsap.to(cm.mesh.position, { x: 0, duration: 0.2, ease: 'power2.out' });
-        gsap.to(cm.mesh.rotation, { z: 0, duration: 0.2, ease: 'power2.out' });
+        gsap.killTweensOf(cm.mesh.position);
+        gsap.to(cm.mesh.position, { x: 0, y: 0, duration: 0.3, ease: 'back.out(1.2)' });
+        gsap.to(cm.mesh.rotation, { x: 0, y: 0, z: 0, duration: 0.2, ease: 'power2.out' });
       }
     });
   }
 
-  private async _throwCard(action: 'keep' | 'discard', ctx: SceneContext): Promise<void> {
+  private async _throwCard(vel: Vec2, ctx: SceneContext): Promise<void> {
     if (this.state !== 'SWIPING') return;
     this.state = 'CUT_ANIM';
 
     ctx.hud.showSwipeHint(false);
-    ctx.hud.showCardActions(false);
+    ctx.pointer.on('dragstart', () => {});
     ctx.pointer.on('drag', () => {});
     ctx.pointer.on('dragend', () => {});
 
     const cm = this.cardMeshes[this.currentCardIdx];
-    const targetX = action === 'keep' ? 15 : -15;
+    ctx.inventory.addCard(cm.card);
 
-    if (action === 'keep') {
-      this.keptCards.push(cm.card);
-      ctx.inventory.addCard(cm.card);
+    // Determine throw direction from velocity or current card position.
+    const velMag = Math.sqrt(vel.x * vel.x + vel.y * vel.y);
+    let nx: number, ny: number;
+    if (velMag > 0.01) {
+      nx = vel.x / velMag;
+      ny = vel.y / velMag;
+    } else {
+      const posLen = Math.sqrt(cm.mesh.position.x ** 2 + cm.mesh.position.y ** 2) || 1;
+      nx =  cm.mesh.position.x / posLen;
+      ny = -cm.mesh.position.y / posLen; // world y up ↔ screen y down
     }
+
+    const throwDist = 18;
+
+    gsap.killTweensOf(cm.mesh.position);
+    gsap.killTweensOf(cm.mesh.rotation);
 
     await new Promise<void>((resolve) => {
       gsap.to(cm.mesh.position, {
-        x: targetX,
-        y: (Math.random() - 0.5) * 4,
+        x: cm.mesh.position.x + nx * throwDist,
+        y: cm.mesh.position.y - ny * throwDist,
         duration: 0.35,
         ease: 'power2.in',
         onComplete: resolve,
       });
-      gsap.to(cm.mesh.rotation, { z: targetX > 0 ? -1 : 1, duration: 0.35, ease: 'power2.in' });
+      gsap.to(cm.mesh.rotation, {
+        z: (Math.random() - 0.5) * 1.2,
+        duration: 0.35,
+        ease: 'power2.in',
+      });
     });
 
     cm.mesh.visible = false;
@@ -239,11 +322,8 @@ export class PackOpeningScene extends BaseScene {
     ctx.hud.clearButtons();
     ctx.hud.setSceneTitle('Cards Revealed!');
 
-    const keptCount = this.keptCards.length;
-    const discardedCount = this.drawnCards.length - keptCount;
-
     ctx.hud.addButton(
-      `Kept ${keptCount} · Discarded ${discardedCount}  →  Back to Room`,
+      `Got ${this.drawnCards.length} cards!  →  Back to Room`,
       () => ctx.goto('room'),
       'primary',
     );
