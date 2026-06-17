@@ -67,6 +67,16 @@
       pointer-events: none;
     }
 
+    #version-display {
+      position: absolute;
+      bottom: 12px;
+      left: 16px;
+      font-size: 12px;
+      color: rgba(255,255,255,0.25);
+      pointer-events: none;
+      display: none;
+    }
+
     #transition-overlay {
       position: fixed;
       inset: 0;
@@ -242,7 +252,7 @@
       transition: background 0.15s;
     }
   </style>
-  <script type="module" crossorigin src="./assets/index-BD2Ptc2_.js"></script>
+  <script type="module" crossorigin src="./assets/index-Bs_h2jjd.js"></script>
 </head>
 <body>
   <div id="room-bg"></div>
@@ -251,6 +261,7 @@
 
   <div id="hud">
     <div id="scene-title"></div>
+    <div id="version-display"></div>
     <div id="money-display">$0.00</div>
     <div id="scene-buttons"></div>
     <div id="tooltip">
@@ -258,7 +269,7 @@
       <div class="tooltip-rarity"></div>
       <div class="tooltip-value"></div>
     </div>
-    <div id="swipe-hint">Swipe left to discard &nbsp;·&nbsp; Swipe right to keep</div>
+    <div id="swipe-hint">Swipe to reveal the next card</div>
     <div id="cut-hint">Draw a line across the pack to open it</div>
     <div id="price-labels"></div>
     <div id="card-actions">

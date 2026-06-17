@@ -1,4 +1,5 @@
 {
+  "version": "0.09",
   "cardsPerPack": 5,
   "holoChance": 0.08,
   "reverseHoloChance": 0.15,
