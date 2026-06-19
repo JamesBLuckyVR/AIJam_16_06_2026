@@ -13,7 +13,7 @@ const CARD_DEPTH = 0.01;
 export class CardMesh {
   readonly mesh: THREE.Mesh;
   private frontMaterial: THREE.Material;
-  private backMaterial: THREE.MeshStandardMaterial;
+  private backMaterial: THREE.Material;
   private holoShader: HoloShader | null = null;
   private _isFaceUp = false;
 
@@ -26,7 +26,7 @@ export class CardMesh {
     this.backMaterial = new THREE.MeshStandardMaterial({ map: backTex, roughness: 0.2, metalness: 0 });
 
     if (card.foilType !== FoilType.None) {
-      const strength = card.foilType === FoilType.FullHolo ? 0.9 : card.foilType === FoilType.Holo ? 0.6 : 0.3;
+      const strength = card.foilType === FoilType.FullHolo ? 1.0 : card.foilType === FoilType.Holo ? 0.75 : 0.45;
       this.holoShader = new HoloShader(frontTex, strength);
       this.frontMaterial = this.holoShader.material;
     } else {

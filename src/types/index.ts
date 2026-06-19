@@ -16,6 +16,7 @@ export enum FoilType {
 export interface CardDefinition {
   id: string;
   name: string;
+  description: string;
   rarity: CardRarity;
   baseCost: number;
   drawChance: number;

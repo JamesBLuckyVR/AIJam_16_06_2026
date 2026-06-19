@@ -1,166 +1,232 @@
 import * as THREE from 'three';
 import type { CardDefinition, PackDefinition } from '../types/index.js';
-import { CardRarity, RARITY_COLORS, RARITY_GLOW } from '../types/index.js';
+import { CardRarity, RARITY_COLORS } from '../types/index.js';
 
-const CARD_W = 512;
-const CARD_H = 716;
+// Layout zones as fractions of the card template image dimensions.
+// These match the visual zones in assets/card/cardfront.png:
+//   title bar  — narrow band at the very top
+//   art area   — large tinted rectangle in the middle
+//   desc area  — smaller rectangle below the art
+const TITLE_Y       = 0.078;  // vertical centre of title bar (adjusted down from 0.069)
+const TITLE_X_START = 0.095;  // left edge of title text
+const TITLE_X_MAX   = 0.78;   // title text truncates here (rarity gem is to the right)
+const RARITY_X      = 0.890;  // centre of the circular gem element on the right of title bar
+const RARITY_Y      = 0.082;  // vertical centre of the gem (slightly below the text baseline)
+const RARITY_R      = 0.046;  // radius of the rarity dot (sized to the gem circle in the template)
+const DESC_TOP      = 0.705;  // top of description box
+const DESC_BOT      = 0.865;  // bottom of description box
+const DESC_X_PAD    = 0.075;  // horizontal padding used for line-wrapping
 
-const PACK_W = 256;
-const PACK_H = 512;
+function loadImage(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`Failed to load image: ${url}`));
+    img.src = url;
+  });
+}
 
-function hashColor(id: string): string {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (Math.imul(31, h) + id.charCodeAt(i)) | 0;
-  const hue = ((h >>> 0) % 360);
-  return `hsl(${hue},60%,40%)`;
+function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const words = text.split(' ');
+  const lines: string[] = [];
+  let line = '';
+  for (const word of words) {
+    const test = line ? `${line} ${word}` : word;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = test;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
 }
 
 export class TextureGenerator {
-  private static _cardCache = new Map<string, THREE.CanvasTexture>();
-  private static _packCache = new Map<string, THREE.CanvasTexture>();
-  private static _backTexture: THREE.CanvasTexture | null = null;
+  private static _cardFrontBase: HTMLImageElement | null = null;
+  private static _cardBackTex: THREE.Texture | null = null;
+  private static _packTexCache = new Map<string, THREE.Texture>();
+  private static _cardCache    = new Map<string, THREE.CanvasTexture>();
+
+  /**
+   * Preload all image assets.  Call once in main.ts before any scene renders.
+   * base = import.meta.env.BASE_URL  (handles GitHub Pages subdirectory paths)
+   */
+  static async preload(base: string, packs: PackDefinition[]): Promise<void> {
+    const loader = new THREE.TextureLoader();
+    const loadTex = (url: string) =>
+      new Promise<THREE.Texture>((resolve, reject) =>
+        loader.load(url, resolve, undefined, () => reject(new Error(`Failed: ${url}`))),
+      );
+
+    const [frontImg, backTex, ...packTexes] = await Promise.all([
+      loadImage(`${base}assets/card/cardfront.png`),
+      loadTex(`${base}assets/card/cardback.png`),
+      ...packs
+        .filter((p) => p.artTexture)
+        .map((p) =>
+          loadTex(`${base}${p.artTexture}`)
+            .then((tex) => ({ id: p.id, tex }))
+            .catch(() => null),
+        ),
+    ]);
+
+    this._cardFrontBase = frontImg;
+    this._cardBackTex = backTex;
+    for (const entry of packTexes) {
+      if (entry) this._packTexCache.set(entry.id, entry.tex);
+    }
+  }
 
   static getCardFace(card: CardDefinition): THREE.CanvasTexture {
-    const key = `${card.id}`;
-    if (this._cardCache.has(key)) return this._cardCache.get(key)!;
+    // Cache is intentionally skipped in dev so layout constant changes are visible immediately.
+    if (!import.meta.env.DEV && this._cardCache.has(card.id)) return this._cardCache.get(card.id)!;
+
+    const base = this._cardFrontBase;
+    const W = base ? base.naturalWidth  : 512;
+    const H = base ? base.naturalHeight : 716;
 
     const canvas = document.createElement('canvas');
-    canvas.width = CARD_W;
-    canvas.height = CARD_H;
+    canvas.width  = W;
+    canvas.height = H;
     const ctx = canvas.getContext('2d')!;
 
-    const bg = hashColor(card.id);
+    if (base) {
+      ctx.drawImage(base, 0, 0, W, H);
+      // Multiply-blend a soft blue-gray over the whole canvas.
+      // multiply: result = src × dst, so white → tint colour, dark frame → barely changed.
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.fillStyle = '#bfd0e8';
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalCompositeOperation = 'source-over';
+    } else {
+      // Fallback: plain dark gradient if image hasn't loaded
+      const grad = ctx.createLinearGradient(0, 0, W, H);
+      grad.addColorStop(0, '#1a2040');
+      grad.addColorStop(1, '#0d0d1a');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, H);
+    }
+
     const rarityColor = RARITY_COLORS[card.rarity as CardRarity] ?? '#888';
-    const glow = RARITY_GLOW[card.rarity as CardRarity] ?? 'transparent';
 
-    const grad = ctx.createLinearGradient(0, 0, CARD_W, CARD_H);
-    grad.addColorStop(0, bg);
-    grad.addColorStop(1, '#0d0d1a');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, CARD_W, CARD_H);
+    // ── Card name in the title bar ────────────────────────────────────────────
+    const titleY    = H * TITLE_Y;
+    const titleXMax = W * TITLE_X_MAX;
+    const titleFont = Math.round(W * 0.044);
+    ctx.font         = `bold ${titleFont}px "Segoe UI", Arial, sans-serif`;
+    ctx.textAlign    = 'left';
+    ctx.textBaseline = 'middle';
 
-    ctx.strokeStyle = rarityColor;
-    ctx.lineWidth = 12;
-    ctx.strokeRect(6, 6, CARD_W - 12, CARD_H - 12);
+    ctx.shadowColor   = 'rgba(255,255,255,0.4)';
+    ctx.shadowBlur    = 2;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
 
-    ctx.shadowColor = glow;
-    ctx.shadowBlur = 20;
-    ctx.strokeStyle = rarityColor;
-    ctx.lineWidth = 3;
-    ctx.strokeRect(20, 20, CARD_W - 40, CARD_H - 40);
-    ctx.shadowBlur = 0;
+    // Truncate name if it overflows the title bar
+    let name = card.name;
+    while (ctx.measureText(name).width > titleXMax - W * TITLE_X_START && name.length > 1) {
+      name = name.slice(0, -1);
+    }
+    ctx.fillStyle = '#111111';
+    ctx.fillText(name, W * TITLE_X_START, titleY);
+    ctx.shadowBlur    = 0;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
 
-    const centerY = CARD_H * 0.35;
-    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    // ── Rarity dot — placed on the circular gem element at the right of the title bar ──
     ctx.beginPath();
-    ctx.arc(CARD_W / 2, centerY, 100, 0, Math.PI * 2);
+    ctx.arc(W * RARITY_X, H * RARITY_Y, W * RARITY_R, 0, Math.PI * 2);
+    ctx.fillStyle = rarityColor;
     ctx.fill();
 
-    ctx.fillStyle = rarityColor;
-    ctx.font = 'bold 26px "Segoe UI", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(card.name, CARD_W / 2, centerY);
+    // ── Description text in the description box ───────────────────────────────
+    if (card.description) {
+      const descTop  = H * DESC_TOP;
+      const descBot  = H * DESC_BOT;
+      const descH    = descBot - descTop;
+      const xPad     = W * DESC_X_PAD;
+      const maxW     = W - xPad * 2;
+      const descFont = Math.round(W * 0.044); // 1.5× original (~22px at 512w)
 
-    ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    ctx.font = '18px "Segoe UI", sans-serif';
-    ctx.fillText(card.rarity, CARD_W / 2, centerY + 40);
+      ctx.font         = `italic ${descFont}px "Segoe UI", Arial, sans-serif`;
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillStyle    = '#1a1a2e';
 
-    ctx.fillStyle = '#ffd700';
-    ctx.font = 'bold 22px "Segoe UI", sans-serif';
-    ctx.fillText(`$${card.baseCost.toFixed(2)}`, CARD_W / 2, CARD_H - 60);
+      const lines  = wrapText(ctx, card.description, maxW);
+      const lineH  = descFont * 1.35;
+      const totalH = lines.length * lineH;
+      const startY = descTop + (descH - totalH) / 2 - H * 0.025;
 
-    ctx.fillStyle = 'rgba(255,255,255,0.15)';
-    ctx.font = '14px monospace';
-    ctx.fillText(`#${card.id}`, CARD_W / 2, CARD_H - 30);
+      lines.forEach((line, i) => {
+        ctx.fillText(line, W * 0.5, startY + i * lineH);
+      });
+    }
 
     const tex = new THREE.CanvasTexture(canvas);
-    this._cardCache.set(key, tex);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    this._cardCache.set(card.id, tex);
     return tex;
   }
 
-  static getCardBack(): THREE.CanvasTexture {
-    if (this._backTexture) return this._backTexture;
+  static getCardBack(): THREE.Texture {
+    if (this._cardBackTex) return this._cardBackTex;
 
+    // Fallback canvas back if preload hasn't run
     const canvas = document.createElement('canvas');
-    canvas.width = CARD_W;
-    canvas.height = CARD_H;
+    canvas.width  = 512;
+    canvas.height = 716;
     const ctx = canvas.getContext('2d')!;
-
-    const grad = ctx.createLinearGradient(0, 0, CARD_W, CARD_H);
+    const grad = ctx.createLinearGradient(0, 0, 512, 716);
     grad.addColorStop(0, '#1a1a3e');
     grad.addColorStop(1, '#0d0d1a');
     ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, CARD_W, CARD_H);
-
+    ctx.fillRect(0, 0, 512, 716);
     ctx.strokeStyle = '#3a3a6e';
-    ctx.lineWidth = 12;
-    ctx.strokeRect(6, 6, CARD_W - 12, CARD_H - 12);
-
-    const size = 40;
-    ctx.strokeStyle = 'rgba(100,100,180,0.2)';
-    ctx.lineWidth = 1;
-    for (let x = 0; x < CARD_W; x += size) {
-      for (let y = 0; y < CARD_H; y += size) {
-        ctx.strokeRect(x, y, size, size);
-      }
-    }
-
-    ctx.fillStyle = 'rgba(138,43,226,0.5)';
-    ctx.font = 'bold 36px "Segoe UI", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('✦', CARD_W / 2, CARD_H / 2);
-
-    this._backTexture = new THREE.CanvasTexture(canvas);
-    return this._backTexture;
+    ctx.lineWidth   = 12;
+    ctx.strokeRect(6, 6, 500, 704);
+    return new THREE.CanvasTexture(canvas);
   }
 
-  static getPackFace(pack: PackDefinition): THREE.CanvasTexture {
-    if (this._packCache.has(pack.id)) return this._packCache.get(pack.id)!;
+  static getPackFace(pack: PackDefinition): THREE.Texture {
+    if (this._packTexCache.has(pack.id)) return this._packTexCache.get(pack.id)!;
 
+    // Fallback canvas pack face
     const canvas = document.createElement('canvas');
-    canvas.width = PACK_W;
-    canvas.height = PACK_H;
+    canvas.width  = 256;
+    canvas.height = 512;
     const ctx = canvas.getContext('2d')!;
-
-    const bg = hashColor(pack.id + 'pack');
-    const grad = ctx.createLinearGradient(0, 0, PACK_W, PACK_H);
-    grad.addColorStop(0, bg);
+    const h = (s: number) => `hsl(${((pack.id.charCodeAt(0) * 31) >>> 0) % 360},60%,${s}%)`;
+    const grad = ctx.createLinearGradient(0, 0, 256, 512);
+    grad.addColorStop(0, h(35));
     grad.addColorStop(1, '#0d0d1a');
     ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, PACK_W, PACK_H);
-
+    ctx.fillRect(0, 0, 256, 512);
     ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-    ctx.lineWidth = 4;
-    ctx.strokeRect(4, 4, PACK_W - 8, PACK_H - 8);
-
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
-    ctx.font = 'bold 20px "Segoe UI", sans-serif';
-    ctx.textAlign = 'center';
+    ctx.lineWidth   = 4;
+    ctx.strokeRect(4, 4, 248, 504);
+    ctx.fillStyle   = 'rgba(255,255,255,0.9)';
+    ctx.font        = 'bold 20px "Segoe UI", sans-serif';
+    ctx.textAlign   = 'center';
     ctx.textBaseline = 'middle';
-
-    const words = pack.displayName.split(' ');
-    let lineY = PACK_H / 2 - 10;
-    words.forEach((word, i) => {
-      ctx.fillText(word, PACK_W / 2, lineY + i * 28);
+    pack.displayName.split(' ').forEach((w, i, a) => {
+      ctx.fillText(w, 128, 256 - ((a.length - 1) * 14) + i * 28);
     });
-
     ctx.fillStyle = '#ffd700';
-    ctx.font = 'bold 18px "Segoe UI", sans-serif';
-    ctx.fillText(`$${pack.cost.toFixed(2)}`, PACK_W / 2, PACK_H - 40);
-
-    const tex = new THREE.CanvasTexture(canvas);
-    this._packCache.set(pack.id, tex);
-    return tex;
+    ctx.font      = 'bold 18px "Segoe UI", sans-serif';
+    ctx.fillText(`$${pack.cost.toFixed(2)}`, 128, 472);
+    return new THREE.CanvasTexture(canvas);
   }
 
   static disposeAll(): void {
     this._cardCache.forEach((t) => t.dispose());
     this._cardCache.clear();
-    this._packCache.forEach((t) => t.dispose());
-    this._packCache.clear();
-    this._backTexture?.dispose();
-    this._backTexture = null;
+    this._packTexCache.forEach((t) => t.dispose());
+    this._packTexCache.clear();
+    this._cardBackTex?.dispose();
+    this._cardBackTex = null;
+    this._cardFrontBase = null;
   }
 }

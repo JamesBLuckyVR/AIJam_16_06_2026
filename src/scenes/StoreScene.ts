@@ -27,16 +27,19 @@ export class StoreScene extends BaseScene {
     this.ctx = ctx;
     this.store = (params as { store: StoreDefinition }).store;
 
-    const ambient = new THREE.AmbientLight(0xffffff, 0.6);
-    const point = new THREE.PointLight(0xfff0e0, 2, 20);
+    const ambient = new THREE.AmbientLight(0xffffff, 2.0);
+    const point = new THREE.PointLight(0xfff0e0, 5.0, 25);
     point.position.set(0, 6, 3);
     this.scene.add(ambient, point);
 
-    ctx.engine.camera.position.set(0, 1.5, 7);
-    ctx.engine.camera.lookAt(0, 0, 0);
+    ctx.engine.camera.position.set(0, 4.8, 5.3);
+    ctx.engine.camera.lookAt(0, -0.7, 0);
 
     this._buildCounter();
     this._buildInventory(ctx);
+
+    document.getElementById('room-bg')!.style.background =
+      `url('${import.meta.env.BASE_URL}assets/scene/shop.png') center/cover no-repeat`;
 
     ctx.hud.setSceneTitle(this.store.displayName);
     ctx.hud.clearButtons();
@@ -75,14 +78,16 @@ export class StoreScene extends BaseScene {
     availablePacks.forEach((packDef, i) => {
       const pm = new PackMesh(packDef);
       const x = (i - (availablePacks.length - 1) / 2) * 3;
-      pm.group.position.set(x, 0, 0);
-      pm.group.rotation.y = 0.2;
+      // Lay flat face-up on the counter surface (top at y = -0.8 + 0.075 = -0.725)
+      pm.group.rotation.x = -Math.PI / 2;
+      pm.group.rotation.z = (i % 2 === 0 ? 0.08 : -0.06);
+      pm.group.position.set(x, -0.70, 0.2);
       pm.group.scale.setScalar(0.7);
       this.scene.add(pm.group);
       this.packMeshes.push(pm);
 
       const price = ctx.market.getPackPrice(packDef, this.store);
-      const worldPos = new THREE.Vector3(x, 1.4, 0);
+      const worldPos = new THREE.Vector3(x, 0.2, 1.2);
       const label = ctx.hud.addPriceLabel(`${packDef.displayName}\n$${price.toFixed(2)}`, 0, 0, () => {
         this._buyPack(packDef, price, ctx);
       });

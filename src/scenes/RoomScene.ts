@@ -6,7 +6,7 @@ export class RoomScene extends BaseScene {
   async init(ctx: SceneContext): Promise<void> {
     this.ctx = ctx;
 
-    const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+    const ambient = new THREE.AmbientLight(0xffffff, 2.0);
     this.scene.add(ambient);
 
     ctx.hud.setSceneTitle('Your Room');
@@ -21,7 +21,7 @@ export class RoomScene extends BaseScene {
     ctx.hud.showVersion(ctx.config.version);
 
     const bg = document.getElementById('room-bg')!;
-    bg.style.background = 'radial-gradient(ellipse at 40% 60%, #2a1a3e 0%, #0d0d1a 100%)';
+    bg.style.background = `url('${import.meta.env.BASE_URL}assets/scene/bedroom.png') center/cover no-repeat`;
   }
 
   update(_delta: number): void {

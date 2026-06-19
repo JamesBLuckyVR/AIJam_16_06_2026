@@ -21,8 +21,8 @@ export class CollectionScene extends BaseScene {
   async init(ctx: SceneContext): Promise<void> {
     this.ctx = ctx;
 
-    const ambient = new THREE.AmbientLight(0xffffff, 0.7);
-    const dir = new THREE.DirectionalLight(0xfff0ff, 0.8);
+    const ambient = new THREE.AmbientLight(0xffffff, 2.0);
+    const dir = new THREE.DirectionalLight(0xfff0ff, 2.5);
     dir.position.set(3, 5, 5);
     this.scene.add(ambient, dir);
 

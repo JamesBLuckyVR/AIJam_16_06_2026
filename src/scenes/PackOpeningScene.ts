@@ -13,10 +13,16 @@ import { clamp } from '../utils/math.js';
 
 type State = 'INSPECT' | 'CUTTING' | 'CUT_ANIM' | 'REVEALING' | 'SWIPING' | 'SUMMARY';
 
-// All cards drawn from a pack are automatically kept — no discard mechanic.
+// Y and Z separation between adjacent cards in the resting stack.
+// STACK_DY makes each card peek slightly below the one above it.
+// STACK_DZ keeps them correctly occluded by the depth buffer.
+const STACK_DY = 0.015;
+const STACK_DZ = 0.012;
 
 export class PackOpeningScene extends BaseScene {
   private packMesh!: PackMesh;
+  private cutTopGroup: THREE.Group | null = null;
+  private cardGroup: THREE.Group | null = null;
   private cardMeshes: CardMesh[] = [];
   private drawnCards: CardInstance[] = [];
   private currentCardIdx = 0;
@@ -27,11 +33,12 @@ export class PackOpeningScene extends BaseScene {
     this.ctx = ctx;
     const { packDef } = params as { packDef: PackDefinition };
 
-    const ambient = new THREE.AmbientLight(0xffffff, 0.4);
-    const spot = new THREE.SpotLight(0xffd0ff, 2.5, 20, 0.5, 0.5, 1.5);
-    spot.position.set(0, 6, 4);
-    spot.target.position.set(0, 0, 0);
-    this.scene.add(ambient, spot, spot.target);
+    const ambient = new THREE.AmbientLight(0xffffff, 2.2);
+    const key = new THREE.DirectionalLight(0xfff4e8, 3.5);
+    key.position.set(1, 5, 4);
+    const fill = new THREE.DirectionalLight(0xc8d8ff, 1.5);
+    fill.position.set(-3, 1, 3);
+    this.scene.add(ambient, key, fill);
 
     ctx.engine.camera.position.set(0, 0, 7);
     ctx.engine.camera.lookAt(0, 0, 0);
@@ -50,7 +57,6 @@ export class PackOpeningScene extends BaseScene {
     ctx.orientation.requestAndStart();
   }
 
-  // Converts screen pixels → world units at the card/pack plane (z=0).
   private _pixelToWorld(ctx: SceneContext): number {
     const camZ = ctx.engine.camera.position.z;
     const vFov = THREE.MathUtils.degToRad(ctx.engine.camera.fov);
@@ -61,7 +67,6 @@ export class PackOpeningScene extends BaseScene {
     this.state = 'INSPECT';
     ctx.hud.showCutHint(true);
 
-    // Mode is determined at dragstart and locked until dragend.
     let packMode: 'rotate' | 'cut' | null = null;
     let cutStart: Vec2 | null = null;
 
@@ -90,7 +95,7 @@ export class PackOpeningScene extends BaseScene {
         const result = GestureDetector.detectCut(cutStart, e.current, bounds);
         if (result.isCut) {
           ctx.hud.showCutHint(false);
-          await this._doCut(result.angle, ctx);
+          await this._doCut(cutStart, e.current, result.angle, ctx);
         }
       }
       packMode = null;
@@ -127,51 +132,74 @@ export class PackOpeningScene extends BaseScene {
     };
   }
 
-  private async _doCut(angle: number, ctx: SceneContext): Promise<void> {
+  private async _doCut(cutStart: Vec2, cutEnd: Vec2, angle: number, ctx: SceneContext): Promise<void> {
     this.state = 'CUT_ANIM';
     ctx.pointer.on('drag', () => {});
     ctx.pointer.on('dragstart', () => {});
     ctx.pointer.on('dragend', () => {});
+
+    const cutPlane = this._screenLineToCutPlane(cutStart, cutEnd, ctx);
+    this.cutTopGroup = this.packMesh.prepareCut(cutPlane);
+    this.scene.add(this.cutTopGroup);
 
     await this.packMesh.animateCut(angle);
     await this.packMesh.animateBodyExit();
     await this._revealCards(ctx);
   }
 
+  private _screenLineToCutPlane(start: Vec2, end: Vec2, ctx: SceneContext): THREE.Plane {
+    const startWorld = this._screenToWorldAtZ(start, ctx.engine.camera, 0);
+    const endWorld = this._screenToWorldAtZ(end, ctx.engine.camera, 0);
+    const cutDir = new THREE.Vector3().subVectors(endWorld, startWorld).normalize();
+    let normal = new THREE.Vector3(-cutDir.y, cutDir.x, 0).normalize();
+    if (normal.y < 0) normal.negate();
+    const mid = new THREE.Vector3().addVectors(startWorld, endWorld).multiplyScalar(0.5);
+    return new THREE.Plane().setFromNormalAndCoplanarPoint(normal, mid);
+  }
+
+  private _screenToWorldAtZ(screen: Vec2, camera: THREE.PerspectiveCamera, targetZ: number): THREE.Vector3 {
+    const ndc = new THREE.Vector2(
+      (screen.x / window.innerWidth) * 2 - 1,
+      -((screen.y / window.innerHeight) * 2 - 1),
+    );
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(ndc, camera);
+    const ray = raycaster.ray;
+    const t = (targetZ - ray.origin.z) / ray.direction.z;
+    return ray.origin.clone().addScaledVector(ray.direction, t);
+  }
+
   private async _revealCards(ctx: SceneContext): Promise<void> {
     this.state = 'REVEALING';
     this.currentCardIdx = 0;
 
-    this.cardMeshes = this.drawnCards.map((card) => {
+    // Build all cards face-up and position them as a physical stack.
+    // card[0] is the top; each subsequent card sits slightly below and behind.
+    this.cardMeshes = this.drawnCards.map((card, i) => {
       const cm = new CardMesh(card);
-      cm.mesh.position.set(0, -8, 0);
-      cm.mesh.rotation.y = Math.PI;
-      this.scene.add(cm.mesh);
+      cm.mesh.position.set(0, -i * STACK_DY, -i * STACK_DZ);
       return cm;
     });
 
-    await this._showNextCard(ctx);
-  }
+    // Add in reverse order so card[0] is drawn last (on top) within the group.
+    this.cardGroup = new THREE.Group();
+    [...this.cardMeshes].reverse().forEach((cm) => this.cardGroup!.add(cm.mesh));
 
-  private async _showNextCard(ctx: SceneContext): Promise<void> {
-    if (this.currentCardIdx >= this.cardMeshes.length) {
-      await this._showSummary(ctx);
-      return;
-    }
+    this.cardGroup.position.set(0, -10, 0);
+    this.scene.add(this.cardGroup);
 
-    const cm = this.cardMeshes[this.currentCardIdx];
-    cm.mesh.position.set(0, -8, 0);
-    cm.mesh.rotation.set(0, Math.PI, 0);
-
+    // Whole stack slides up from below as one unit — all cards already face-up.
     await new Promise<void>((resolve) => {
-      gsap.to(cm.mesh.position, { y: 0, duration: 0.5, ease: 'back.out(1.5)', onComplete: resolve });
+      gsap.to(this.cardGroup!.position, {
+        y: 0,
+        duration: 0.55,
+        ease: 'back.out(1.4)',
+        onComplete: resolve,
+      });
     });
-
-    await cm.flipToFaceUp();
 
     this.state = 'SWIPING';
     ctx.hud.showSwipeHint(true);
-
     this._setupSwipeListeners(ctx);
   }
 
@@ -179,10 +207,10 @@ export class PackOpeningScene extends BaseScene {
     const cm = this.cardMeshes[this.currentCardIdx];
     const pixToWorld = this._pixelToWorld(ctx);
 
-    const MAX_TILT    = 0.35;  // radians — max card tilt during rotate mode
-    const TILT_FACTOR = 0.004; // radians per pixel offset from press start
-    const THROW_VEL   = 0.5;   // px/ms to auto-throw on release
-    const THROW_DIST  = 0.5;   // world units from origin to auto-throw on release
+    const MAX_TILT    = 0.35;
+    const TILT_FACTOR = 0.004;
+    const THROW_VEL   = 0.5;
+    const THROW_DIST  = 0.5;
 
     const raycaster = new THREE.Raycaster();
 
@@ -192,7 +220,6 @@ export class PackOpeningScene extends BaseScene {
 
     ctx.pointer.on('dragstart', (e: DragEvent) => {
       if (this.state !== 'SWIPING') return;
-      // Only enter interact mode when the press lands on the card.
       const ndc = ctx.pointer.clientToNDC(e.start);
       raycaster.setFromCamera(new THREE.Vector2(ndc.x, ndc.y), ctx.engine.camera);
       if (raycaster.intersectObject(cm.mesh, false).length > 0) {
@@ -210,7 +237,6 @@ export class PackOpeningScene extends BaseScene {
       const offsetY = e.current.y - gestureStart.y;
 
       if (cardMode === 'rotate') {
-        // Swipe starts only when the pointer leaves the card bounds.
         const ndc = ctx.pointer.clientToNDC(e.current);
         raycaster.setFromCamera(new THREE.Vector2(ndc.x, ndc.y), ctx.engine.camera);
         const onCard = raycaster.intersectObject(cm.mesh, false).length > 0;
@@ -219,18 +245,22 @@ export class PackOpeningScene extends BaseScene {
           // Pointer left the card — transition to free-swipe.
           cardMode = 'swipe';
           swipeModeStart = { ...e.current };
-          gsap.killTweensOf(cm.mesh.rotation);
-          gsap.to(cm.mesh.rotation, { x: 0, y: 0, z: 0, duration: 0.15, ease: 'power2.out' });
-          // Fall through so position update runs on this same event.
+          if (this.cardGroup) {
+            gsap.killTweensOf(this.cardGroup.rotation);
+            gsap.to(this.cardGroup.rotation, { x: 0, y: 0, z: 0, duration: 0.15, ease: 'power2.out' });
+          }
+          // Fall through so position update runs on this event.
         } else {
-          // Still on card — tilt proportional to offset from press start.
-          cm.mesh.rotation.y = clamp( offsetX * TILT_FACTOR, -MAX_TILT, MAX_TILT);
-          cm.mesh.rotation.x = clamp(-offsetY * TILT_FACTOR, -MAX_TILT, MAX_TILT);
+          // Tilt the entire stack together to avoid clipping between cards.
+          if (this.cardGroup) {
+            this.cardGroup.rotation.y = clamp( offsetX * TILT_FACTOR, -MAX_TILT, MAX_TILT);
+            this.cardGroup.rotation.x = clamp(-offsetY * TILT_FACTOR, -MAX_TILT, MAX_TILT);
+          }
           return;
         }
       }
 
-      // Free-swipe: card follows finger in all directions.
+      // Swipe: only the top card follows the pointer; the rest of the stack stays.
       const swOffX = e.current.x - swipeModeStart.x;
       const swOffY = e.current.y - swipeModeStart.y;
       cm.mesh.position.x = swOffX * pixToWorld;
@@ -239,17 +269,16 @@ export class PackOpeningScene extends BaseScene {
 
     ctx.pointer.on('dragend', (e: DragEvent) => {
       if (this.state !== 'SWIPING') return;
-
       if (cardMode === 'idle') return;
 
       if (cardMode === 'rotate') {
-        // Short press — snap rotation back to flat.
-        gsap.to(cm.mesh.rotation, { x: 0, y: 0, z: 0, duration: 0.2, ease: 'power2.out' });
+        if (this.cardGroup) {
+          gsap.to(this.cardGroup.rotation, { x: 0, y: 0, z: 0, duration: 0.2, ease: 'power2.out' });
+        }
         cardMode = 'idle';
         return;
       }
 
-      // Swipe mode — decide throw vs snap-back.
       const vel = GestureDetector.swipeVelocity2D(e.positions, e.timestamps);
       const velMag = Math.sqrt(vel.x * vel.x + vel.y * vel.y);
       const distFromCenter = Math.sqrt(cm.mesh.position.x ** 2 + cm.mesh.position.y ** 2);
@@ -260,7 +289,9 @@ export class PackOpeningScene extends BaseScene {
       } else {
         gsap.killTweensOf(cm.mesh.position);
         gsap.to(cm.mesh.position, { x: 0, y: 0, duration: 0.3, ease: 'back.out(1.2)' });
-        gsap.to(cm.mesh.rotation, { x: 0, y: 0, z: 0, duration: 0.2, ease: 'power2.out' });
+        if (this.cardGroup) {
+          gsap.to(this.cardGroup.rotation, { x: 0, y: 0, z: 0, duration: 0.2, ease: 'power2.out' });
+        }
       }
     });
   }
@@ -277,7 +308,19 @@ export class PackOpeningScene extends BaseScene {
     const cm = this.cardMeshes[this.currentCardIdx];
     ctx.inventory.addCard(cm.card);
 
-    // Determine throw direction from velocity or current card position.
+    // Extract card from the group so it can fly freely in world space.
+    if (this.cardGroup && cm.mesh.parent === this.cardGroup) {
+      const worldPos   = new THREE.Vector3();
+      const worldQuat  = new THREE.Quaternion();
+      const worldScale = new THREE.Vector3();
+      cm.mesh.matrixWorld.decompose(worldPos, worldQuat, worldScale);
+      this.cardGroup.remove(cm.mesh);
+      this.scene.add(cm.mesh);
+      cm.mesh.position.copy(worldPos);
+      cm.mesh.quaternion.copy(worldQuat);
+      cm.mesh.scale.copy(worldScale);
+    }
+
     const velMag = Math.sqrt(vel.x * vel.x + vel.y * vel.y);
     let nx: number, ny: number;
     if (velMag > 0.01) {
@@ -286,18 +329,16 @@ export class PackOpeningScene extends BaseScene {
     } else {
       const posLen = Math.sqrt(cm.mesh.position.x ** 2 + cm.mesh.position.y ** 2) || 1;
       nx =  cm.mesh.position.x / posLen;
-      ny = -cm.mesh.position.y / posLen; // world y up ↔ screen y down
+      ny = -cm.mesh.position.y / posLen;
     }
-
-    const throwDist = 18;
 
     gsap.killTweensOf(cm.mesh.position);
     gsap.killTweensOf(cm.mesh.rotation);
 
     await new Promise<void>((resolve) => {
       gsap.to(cm.mesh.position, {
-        x: cm.mesh.position.x + nx * throwDist,
-        y: cm.mesh.position.y - ny * throwDist,
+        x: cm.mesh.position.x + nx * 18,
+        y: cm.mesh.position.y - ny * 18,
         duration: 0.35,
         ease: 'power2.in',
         onComplete: resolve,
@@ -311,8 +352,30 @@ export class PackOpeningScene extends BaseScene {
 
     cm.mesh.visible = false;
     this.currentCardIdx++;
-    this.state = 'REVEALING';
-    await this._showNextCard(ctx);
+
+    // Slide remaining cards so the new top card settles at (0, 0, 0).
+    if (this.cardGroup) {
+      this.cardMeshes.slice(this.currentCardIdx).forEach((nextCm, relIdx) => {
+        gsap.to(nextCm.mesh.position, {
+          y: -relIdx * STACK_DY,
+          z: -relIdx * STACK_DZ,
+          duration: 0.22,
+          ease: 'back.out(1.3)',
+        });
+      });
+    }
+
+    if (this.currentCardIdx >= this.cardMeshes.length) {
+      await this._showSummary(ctx);
+      return;
+    }
+
+    // Let the restack settle before re-enabling swipe.
+    await new Promise((resolve) => setTimeout(resolve, 180));
+
+    this.state = 'SWIPING';
+    ctx.hud.showSwipeHint(true);
+    this._setupSwipeListeners(ctx);
   }
 
   private async _showSummary(ctx: SceneContext): Promise<void> {
@@ -344,8 +407,20 @@ export class PackOpeningScene extends BaseScene {
   }
 
   dispose(): void {
-    this.cardMeshes.forEach((cm) => cm.dispose());
+    // Remove each card from whatever parent it has (scene or cardGroup).
+    this.cardMeshes.forEach((cm) => {
+      if (cm.mesh.parent) cm.mesh.parent.remove(cm.mesh);
+      cm.dispose();
+    });
     this.cardMeshes = [];
+    if (this.cardGroup) {
+      this.scene.remove(this.cardGroup);
+      this.cardGroup = null;
+    }
+    if (this.cutTopGroup) {
+      this.scene.remove(this.cutTopGroup);
+      this.cutTopGroup = null;
+    }
     this.packMesh?.dispose();
     super.dispose();
   }

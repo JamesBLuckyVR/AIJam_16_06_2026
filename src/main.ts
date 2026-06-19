@@ -1,4 +1,5 @@
 import { DataLoader } from './data/DataLoader.js';
+import { TextureGenerator } from './rendering/TextureGenerator.js';
 import { Engine } from './rendering/Engine.js';
 import { SceneManager } from './scenes/SceneManager.js';
 import { MarketSystem } from './systems/MarketSystem.js';
@@ -27,7 +28,10 @@ async function main(): Promise<void> {
     hud.setLoadingProgress(0.5);
 
     const inventory = SaveSystem.load(packs, config.startingMoney);
-    hud.setLoadingProgress(0.7);
+    hud.setLoadingProgress(0.6);
+
+    await TextureGenerator.preload(import.meta.env.BASE_URL, packs);
+    hud.setLoadingProgress(0.85);
 
     const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
     const engine = new Engine(canvas);

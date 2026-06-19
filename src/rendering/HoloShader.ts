@@ -32,6 +32,8 @@ const fragmentShader = /* glsl */ `
 
   void main() {
     vec4 baseColor = texture2D(uCardTexture, vUv);
+    // Compensate for the multiply-tint applied to the card face canvas.
+    baseColor.rgb = min(baseColor.rgb * 1.45, vec3(1.0));
 
     vec3 viewDir = normalize(uCameraPos - vWorldPos);
     float NdotV = dot(vNormal, viewDir);
@@ -39,7 +41,7 @@ const fragmentShader = /* glsl */ `
     float tiltInfluence = uTiltX * 0.4 + uTiltY * 0.3;
     float bandShift = NdotV * 0.5 + tiltInfluence + uTime * 0.04;
 
-    float bandFreq = 10.0;
+    float bandFreq = 30.0;
     float band = sin(vUv.y * bandFreq * 3.14159 + bandShift * 6.28318) * 0.5 + 0.5;
     band += sin(vUv.x * bandFreq * 1.5 * 3.14159 + bandShift * 4.0) * 0.25;
     band = clamp(band, 0.0, 1.0);
@@ -48,10 +50,10 @@ const fragmentShader = /* glsl */ `
 
     vec3 lightDir = normalize(vec3(1.0, 2.0, 3.0));
     vec3 halfVec = normalize(lightDir + viewDir);
-    float spec = pow(max(dot(vNormal, halfVec), 0.0), 48.0);
+    float spec = pow(max(dot(vNormal, halfVec), 0.0), 64.0);
 
-    float holoMask = uHoloStrength * (0.5 + 0.5 * (1.0 - NdotV));
-    vec3 finalColor = mix(baseColor.rgb, holoColor, holoMask) + spec * 0.7;
+    float holoMask = uHoloStrength * (0.18 + 0.32 * (1.0 - NdotV));
+    vec3 finalColor = mix(baseColor.rgb, holoColor, holoMask) + spec * 0.25;
 
     gl_FragColor = vec4(finalColor, baseColor.a);
   }
@@ -60,7 +62,7 @@ const fragmentShader = /* glsl */ `
 export class HoloShader {
   readonly material: THREE.ShaderMaterial;
 
-  constructor(texture: THREE.Texture, holoStrength = 0.5) {
+  constructor(texture: THREE.Texture, holoStrength = 0.28) {
     this.material = new THREE.ShaderMaterial({
       vertexShader,
       fragmentShader,

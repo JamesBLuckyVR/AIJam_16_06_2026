@@ -6,8 +6,11 @@ export class StoreSelectScene extends BaseScene {
   async init(ctx: SceneContext): Promise<void> {
     this.ctx = ctx;
 
-    const ambient = new THREE.AmbientLight(0xffffff, 0.5);
+    const ambient = new THREE.AmbientLight(0xffffff, 2.0);
     this.scene.add(ambient);
+
+    document.getElementById('room-bg')!.style.background =
+      `url('${import.meta.env.BASE_URL}assets/scene/outside.png') center/cover no-repeat`;
 
     ctx.hud.setSceneTitle('Choose a Store');
     ctx.hud.clearButtons();

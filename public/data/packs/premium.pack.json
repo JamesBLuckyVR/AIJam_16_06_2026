@@ -1,12 +1,13 @@
 {
   "id": "premium",
-  "displayName": "Premium Pack",
+  "displayName": "Dawn of Legends",
   "cost": 9.99,
-  "artTexture": "",
+  "artTexture": "assets/pack/dawn_of_legends.png",
   "cards": [
     {
       "id": "p001",
       "name": "Iron Knight",
+      "description": "Sworn to a king long dead, still bound by an oath that outlasted kingdoms.",
       "rarity": "Common",
       "baseCost": 1.00,
       "drawChance": 0.18,
@@ -16,6 +17,7 @@
     {
       "id": "p002",
       "name": "Crystal Mage",
+      "description": "Her mind is a lattice of pure logic. Her heart, a shard of absolute cold.",
       "rarity": "Common",
       "baseCost": 1.25,
       "drawChance": 0.17,
@@ -25,6 +27,7 @@
     {
       "id": "p003",
       "name": "Sea Witch",
+      "description": "Commands the tides and the things that lurk beneath them. Neither serves willingly.",
       "rarity": "Uncommon",
       "baseCost": 5.00,
       "drawChance": 0.15,
@@ -34,6 +37,7 @@
     {
       "id": "p004",
       "name": "Storm Giant",
+      "description": "His might is as terrible as his wit is sharp. He laughs loudest in the lightning.",
       "rarity": "Uncommon",
       "baseCost": 6.00,
       "drawChance": 0.13,
@@ -43,6 +47,7 @@
     {
       "id": "p005",
       "name": "Arcane Fox",
+      "description": "Seven tails, seven hexes. Count carefully — some folk forget to count at all.",
       "rarity": "Uncommon",
       "baseCost": 7.50,
       "drawChance": 0.12,
@@ -52,6 +57,7 @@
     {
       "id": "p006",
       "name": "Lava Titan",
+      "description": "Born where the ocean meets the volcano. Has never needed to raise his voice.",
       "rarity": "Rare",
       "baseCost": 18.00,
       "drawChance": 0.10,
@@ -61,6 +67,7 @@
     {
       "id": "p007",
       "name": "Frost Queen",
+      "description": "Her mercy is as rare as summer in the north. She rules because none dare oppose her.",
       "rarity": "Rare",
       "baseCost": 22.00,
       "drawChance": 0.08,
@@ -70,6 +77,7 @@
     {
       "id": "p008",
       "name": "Celestial Dragon",
+      "description": "Swims through the void between suns as a fish swims through water. Unconcerned.",
       "rarity": "UltraRare",
       "baseCost": 55.00,
       "drawChance": 0.05,
@@ -79,6 +87,7 @@
     {
       "id": "p009",
       "name": "Ancient Leviathan",
+      "description": "Older than the ocean floor it rests upon. The sea is merely its bedroom.",
       "rarity": "UltraRare",
       "baseCost": 65.00,
       "drawChance": 0.015,
@@ -88,6 +97,7 @@
     {
       "id": "p010",
       "name": "God of Storms",
+      "description": "Does not command the storm. Is the storm, given form and terrible purpose.",
       "rarity": "Secret",
       "baseCost": 150.00,
       "drawChance": 0.005,
