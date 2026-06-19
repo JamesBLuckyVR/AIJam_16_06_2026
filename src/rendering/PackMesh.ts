@@ -37,7 +37,7 @@ export class PackMesh {
       foilMat(0xa8b0c0),               // +Y top edge
       foilMat(0xa8b0c0),               // −Y bottom edge
       new THREE.MeshStandardMaterial({ map: artTex, roughness: 0.10, metalness: 0.06 }), // front
-      foilMat(0xbcc4d0, 0.16),         // back — slightly shinier
+      new THREE.MeshStandardMaterial({ map: artTex, roughness: 0.10, metalness: 0.06 }), // back
     ]);
     this._meshes.push(body);
     this.group.add(body);

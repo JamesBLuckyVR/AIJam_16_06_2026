@@ -7,15 +7,28 @@ import { CardRarity, RARITY_COLORS } from '../types/index.js';
 //   title bar  — narrow band at the very top
 //   art area   — large tinted rectangle in the middle
 //   desc area  — smaller rectangle below the art
-const TITLE_Y       = 0.078;  // vertical centre of title bar (adjusted down from 0.069)
+const TITLE_Y       = 0.078;  // vertical centre of title bar
 const TITLE_X_START = 0.095;  // left edge of title text
 const TITLE_X_MAX   = 0.78;   // title text truncates here (rarity gem is to the right)
 const RARITY_X      = 0.890;  // centre of the circular gem element on the right of title bar
-const RARITY_Y      = 0.082;  // vertical centre of the gem (slightly below the text baseline)
-const RARITY_R      = 0.046;  // radius of the rarity dot (sized to the gem circle in the template)
+const RARITY_Y      = 0.082;  // vertical centre of the gem
+const RARITY_R      = 0.046;  // radius of the rarity dot
 const DESC_TOP      = 0.705;  // top of description box
 const DESC_BOT      = 0.865;  // bottom of description box
 const DESC_X_PAD    = 0.075;  // horizontal padding used for line-wrapping
+// Character art area (the transparent hole in the cardfront template)
+const ART_TOP       = 0.115;
+const ART_BOT       = 0.600;
+const ART_X_PAD     = 0.080;
+
+// Art area in UV space (UV.y = 1 - canvas_fraction because Three.js flipY=true).
+// Exported for the holo shader so both systems share the same bounds.
+export const ART_UV = {
+  minX: ART_X_PAD,
+  maxX: 1.0 - ART_X_PAD,
+  minY: 1.0 - ART_BOT,   // 0.322
+  maxY: 1.0 - ART_TOP,   // 0.888
+};
 
 function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -46,8 +59,9 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
 export class TextureGenerator {
   private static _cardFrontBase: HTMLImageElement | null = null;
   private static _cardBackTex: THREE.Texture | null = null;
-  private static _packTexCache = new Map<string, THREE.Texture>();
-  private static _cardCache    = new Map<string, THREE.CanvasTexture>();
+  private static _packTexCache  = new Map<string, THREE.Texture>();
+  private static _cardCache     = new Map<string, THREE.CanvasTexture>();
+  private static _charImgCache  = new Map<string, HTMLImageElement>();
 
   /**
    * Preload all image assets.  Call once in main.ts before any scene renders.
@@ -60,22 +74,33 @@ export class TextureGenerator {
         loader.load(url, resolve, undefined, () => reject(new Error(`Failed: ${url}`))),
       );
 
-    const [frontImg, backTex, ...packTexes] = await Promise.all([
+    const allCards = packs.flatMap((p) => p.cards);
+
+    const [frontImg, backTex, ...rest] = await Promise.all([
       loadImage(`${base}assets/card/cardfront.png`),
       loadTex(`${base}assets/card/cardback.png`),
       ...packs
         .filter((p) => p.artTexture)
         .map((p) =>
           loadTex(`${base}${p.artTexture}`)
-            .then((tex) => ({ id: p.id, tex }))
+            .then((tex) => ({ kind: 'pack' as const, id: p.id, tex }))
+            .catch(() => null),
+        ),
+      ...allCards
+        .filter((c) => c.characterTexture)
+        .map((c) =>
+          loadImage(`${base}${c.characterTexture}`)
+            .then((img) => ({ kind: 'char' as const, id: c.id, img }))
             .catch(() => null),
         ),
     ]);
 
     this._cardFrontBase = frontImg;
     this._cardBackTex = backTex;
-    for (const entry of packTexes) {
-      if (entry) this._packTexCache.set(entry.id, entry.tex);
+    for (const entry of rest) {
+      if (!entry) continue;
+      if (entry.kind === 'pack') this._packTexCache.set(entry.id, entry.tex);
+      else                       this._charImgCache.set(entry.id, entry.img);
     }
   }
 
@@ -93,13 +118,49 @@ export class TextureGenerator {
     const ctx = canvas.getContext('2d')!;
 
     if (base) {
+      // 1. Draw the card frame (cardfront.png has a transparent hole for the art area).
       ctx.drawImage(base, 0, 0, W, H);
-      // Multiply-blend a soft blue-gray over the whole canvas.
-      // multiply: result = src × dst, so white → tint colour, dark frame → barely changed.
+
+      // 2. Tint only the opaque frame areas — preserve the transparent art hole.
+      //    Strategy: build a tint layer clipped to the cardfront's own opaque mask via
+      //    destination-in, then composite that clipped layer onto the main canvas with
+      //    multiply.  Transparent pixels in the art hole are never painted.
+      const tintCanvas = document.createElement('canvas');
+      tintCanvas.width = W; tintCanvas.height = H;
+      const tc = tintCanvas.getContext('2d')!;
+      tc.fillStyle = '#bfd0e8';
+      tc.fillRect(0, 0, W, H);
+      tc.globalCompositeOperation = 'destination-in';
+      tc.drawImage(base, 0, 0, W, H);          // clips tint to opaque card pixels only
       ctx.globalCompositeOperation = 'multiply';
-      ctx.fillStyle = '#bfd0e8';
-      ctx.fillRect(0, 0, W, H);
+      ctx.drawImage(tintCanvas, 0, 0);
       ctx.globalCompositeOperation = 'source-over';
+
+      // 3. Draw character art BEHIND the frame with destination-over.
+      //    Visible only through the transparent art hole; the opaque frame clips all edges.
+      const charImg = TextureGenerator._charImgCache.get(card.id);
+      if (charImg) {
+        const artX = W * ART_X_PAD;
+        const artY = H * ART_TOP;
+        const artW = W * (1 - 2 * ART_X_PAD);
+        const artH = H * (ART_BOT - ART_TOP);
+        // Always fill the full cutout height; center horizontally.
+        // Any horizontal overflow is hidden by the opaque card frame (destination-over).
+        const imgAspect = charImg.naturalWidth / charImg.naturalHeight;
+        const dh = artH;
+        const dw = artH * imgAspect;
+        const dx = artX + (artW - dw) / 2;
+        const dy = artY;
+        ctx.globalCompositeOperation = 'destination-over';
+        ctx.drawImage(charImg, dx, dy, dw, dh);
+        ctx.globalCompositeOperation = 'source-over';
+      } else {
+        // Fallback: fill art hole with dark background so no transparent pixels leak through.
+        ctx.globalCompositeOperation = 'destination-over';
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fillRect(0, 0, W, H);
+        ctx.globalCompositeOperation = 'source-over';
+      }
     } else {
       // Fallback: plain dark gradient if image hasn't loaded
       const grad = ctx.createLinearGradient(0, 0, W, H);
@@ -225,6 +286,7 @@ export class TextureGenerator {
     this._cardCache.clear();
     this._packTexCache.forEach((t) => t.dispose());
     this._packTexCache.clear();
+    this._charImgCache.clear();
     this._cardBackTex?.dispose();
     this._cardBackTex = null;
     this._cardFrontBase = null;

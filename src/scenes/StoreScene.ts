@@ -22,6 +22,8 @@ export class StoreScene extends BaseScene {
   private raycaster = new THREE.Raycaster();
   private packMeshes: PackMesh[] = [];
   private cardMeshes: CardMesh[] = [];
+  private _sellPanelEl: HTMLElement | null = null;
+  private _sellPanelOpen = false;
 
   async init(ctx: SceneContext, params?: unknown): Promise<void> {
     this.ctx = ctx;
@@ -97,6 +99,7 @@ export class StoreScene extends BaseScene {
   }
 
   private _onTap(pos: { x: number; y: number }, ctx: SceneContext): void {
+    if (this._sellPanelOpen) return;
     const ndc = ctx.pointer.clientToNDC(pos);
     this.raycaster.setFromCamera(new THREE.Vector2(ndc.x, ndc.y), ctx.engine.camera);
 
@@ -150,42 +153,141 @@ export class StoreScene extends BaseScene {
   }
 
   private _openSellPanel(ctx: SceneContext): void {
+    this._closeSellPanel();
+    this._sellPanelOpen = true;
+
+    // Backdrop
+    const backdrop = document.createElement('div');
+    backdrop.style.cssText = `
+      position:fixed;inset:0;z-index:50;
+      background:rgba(0,0,0,0.6);
+      display:flex;align-items:center;justify-content:center;
+    `;
+
+    // Panel box
+    const panel = document.createElement('div');
+    panel.style.cssText = `
+      background:#1a1a2e;
+      border:1px solid rgba(255,255,255,0.15);
+      border-radius:12px;
+      width:min(420px,90vw);
+      max-height:70vh;
+      display:flex;flex-direction:column;
+      box-shadow:0 8px 32px rgba(0,0,0,0.7);
+      overflow:hidden;
+    `;
+
+    // Header
+    const header = document.createElement('div');
+    header.style.cssText = `
+      display:flex;align-items:center;justify-content:space-between;
+      padding:14px 18px;
+      border-bottom:1px solid rgba(255,255,255,0.1);
+      flex-shrink:0;
+    `;
+    const title = document.createElement('span');
+    title.textContent = 'Sell Cards';
+    title.style.cssText = 'color:#fff;font-size:16px;font-weight:700;font-family:"Segoe UI",sans-serif;';
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '✕';
+    closeBtn.style.cssText = `
+      background:none;border:none;color:rgba(255,255,255,0.6);
+      font-size:18px;cursor:pointer;padding:0 4px;line-height:1;
+    `;
+    closeBtn.addEventListener('click', () => this._closeSellPanel());
+    header.append(title, closeBtn);
+
+    // Scrollable list
+    const list = document.createElement('div');
+    list.style.cssText = 'overflow-y:auto;flex:1;padding:8px 0;';
+
     const cards = ctx.inventory.cards;
     if (cards.length === 0) {
-      ctx.hud.clearButtons();
-      ctx.hud.addButton('No cards to sell', () => {});
-      ctx.hud.addButton('← Back', () => {
-        ctx.hud.clearPriceLabels();
-        ctx.goto('store-select');
+      const empty = document.createElement('p');
+      empty.textContent = 'No cards to sell.';
+      empty.style.cssText = 'color:rgba(255,255,255,0.5);text-align:center;padding:24px;font-family:"Segoe UI",sans-serif;';
+      list.appendChild(empty);
+    } else {
+      // Group by defId+foilType, sort by price descending
+      const groups = new Map<string, { card: CardInstance; price: number; count: number }>();
+      for (const card of cards) {
+        const key = `${card.definition.id}_${card.foilType}`;
+        if (groups.has(key)) {
+          groups.get(key)!.count++;
+        } else {
+          const price = ctx.market.getBuyPrice(card.definition, this.store);
+          groups.set(key, { card, price, count: 1 });
+        }
+      }
+      const sorted = [...groups.values()].sort((a, b) => b.price - a.price);
+
+      sorted.forEach(({ card, price, count }) => {
+        const row = document.createElement('div');
+        row.style.cssText = `
+          display:flex;align-items:center;gap:10px;
+          padding:10px 18px;
+          border-bottom:1px solid rgba(255,255,255,0.06);
+          font-family:"Segoe UI",sans-serif;
+        `;
+
+        const nameEl = document.createElement('span');
+        nameEl.textContent = card.displayName;
+        nameEl.style.cssText = 'color:#e8e8f0;font-size:14px;flex:1;';
+
+        if (count > 1) {
+          const badge = document.createElement('span');
+          badge.textContent = `x${count}`;
+          badge.style.cssText = `
+            background:rgba(255,255,255,0.12);color:rgba(255,255,255,0.7);
+            font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;
+          `;
+          row.appendChild(nameEl);
+          row.appendChild(badge);
+        } else {
+          row.appendChild(nameEl);
+        }
+
+        const priceEl = document.createElement('span');
+        priceEl.textContent = `$${price.toFixed(2)}`;
+        priceEl.style.cssText = 'color:#7dffb0;font-size:14px;font-weight:600;min-width:52px;text-align:right;';
+
+        const sellBtn = document.createElement('button');
+        sellBtn.textContent = 'Sell';
+        sellBtn.style.cssText = `
+          background:#2a5c3f;color:#7dffb0;border:1px solid #3a8c5f;
+          border-radius:6px;padding:5px 14px;font-size:13px;font-weight:600;
+          cursor:pointer;font-family:"Segoe UI",sans-serif;
+          transition:background 0.15s;
+        `;
+        sellBtn.addEventListener('mouseenter', () => { sellBtn.style.background = '#3a7c4f'; });
+        sellBtn.addEventListener('mouseleave', () => { sellBtn.style.background = '#2a5c3f'; });
+        sellBtn.addEventListener('click', () => {
+          ctx.inventory.removeCard(card.instanceId);
+          ctx.inventory.earn(price);
+          ctx.save();
+          ctx.hud.setMoney(ctx.inventory.money);
+          this._openSellPanel(ctx);
+        });
+
+        row.append(priceEl, sellBtn);
+        list.appendChild(row);
       });
-      return;
     }
 
-    ctx.hud.clearButtons();
-    ctx.hud.addButton('← Cancel', () => {
-      ctx.hud.clearButtons();
-      ctx.hud.addButton('← Back', () => {
-        ctx.hud.clearPriceLabels();
-        ctx.goto('store-select');
-      });
-      ctx.hud.addButton('Sell Cards', () => this._openSellPanel(ctx));
-    });
-
-    cards.slice(0, 6).forEach((card) => {
-      const buyPrice = ctx.market.getBuyPrice(card.definition, this.store);
-      ctx.hud.addButton(
-        `${card.displayName} → $${buyPrice.toFixed(2)}`,
-        () => this._sellCard(card, buyPrice, ctx),
-      );
-    });
+    panel.append(header, list);
+    backdrop.appendChild(panel);
+    // Close on backdrop click (but not panel click)
+    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) this._closeSellPanel(); });
+    document.body.appendChild(backdrop);
+    this._sellPanelEl = backdrop;
   }
 
-  private _sellCard(card: CardInstance, price: number, ctx: SceneContext): void {
-    ctx.inventory.removeCard(card.instanceId);
-    ctx.inventory.earn(price);
-    ctx.save();
-    ctx.hud.setMoney(ctx.inventory.money);
-    this._openSellPanel(ctx);
+  private _closeSellPanel(): void {
+    if (this._sellPanelEl) {
+      this._sellPanelEl.remove();
+      this._sellPanelEl = null;
+    }
+    this._sellPanelOpen = false;
   }
 
   update(_delta: number): void {
@@ -198,6 +300,7 @@ export class StoreScene extends BaseScene {
   }
 
   dispose(): void {
+    this._closeSellPanel();
     this.packMeshes.forEach((pm) => pm.dispose());
     this.cardMeshes.forEach((cm) => cm.dispose());
     this.packMeshes = [];

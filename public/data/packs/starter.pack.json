@@ -11,7 +11,7 @@
       "rarity": "Common",
       "baseCost": 0.50,
       "drawChance": 0.25,
-      "characterTexture": "",
+      "characterTexture": "assets/character/common_slime.png",
       "faceTexture": ""
     },
     {
@@ -21,7 +21,7 @@
       "rarity": "Common",
       "baseCost": 0.75,
       "drawChance": 0.22,
-      "characterTexture": "",
+      "characterTexture": "assets/character/forest_sprite.png",
       "faceTexture": ""
     },
     {
@@ -31,7 +31,7 @@
       "rarity": "Common",
       "baseCost": 1.00,
       "drawChance": 0.20,
-      "characterTexture": "",
+      "characterTexture": "assets/character/stone_golem.png",
       "faceTexture": ""
     },
     {
@@ -41,7 +41,7 @@
       "rarity": "Uncommon",
       "baseCost": 3.00,
       "drawChance": 0.13,
-      "characterTexture": "",
+      "characterTexture": "assets/character/wind_hawk.png",
       "faceTexture": ""
     },
     {
@@ -51,7 +51,7 @@
       "rarity": "Uncommon",
       "baseCost": 4.00,
       "drawChance": 0.10,
-      "characterTexture": "",
+      "characterTexture": "assets/character/shadow_wolf.png",
       "faceTexture": ""
     },
     {
@@ -61,7 +61,7 @@
       "rarity": "Rare",
       "baseCost": 12.00,
       "drawChance": 0.07,
-      "characterTexture": "",
+      "characterTexture": "assets/character/fire_dragon.png",
       "faceTexture": ""
     },
     {
@@ -71,7 +71,7 @@
       "rarity": "UltraRare",
       "baseCost": 30.00,
       "drawChance": 0.02,
-      "characterTexture": "",
+      "characterTexture": "assets/character/thunder_phoenix.png",
       "faceTexture": ""
     },
     {
@@ -81,7 +81,7 @@
       "rarity": "Secret",
       "baseCost": 80.00,
       "drawChance": 0.01,
-      "characterTexture": "",
+      "characterTexture": "assets/character/void_serpent.png",
       "faceTexture": ""
     }
   ]

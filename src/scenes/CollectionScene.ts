@@ -21,6 +21,8 @@ export class CollectionScene extends BaseScene {
   async init(ctx: SceneContext): Promise<void> {
     this.ctx = ctx;
 
+    document.getElementById('scene-dim')!.style.background = 'rgba(0,0,0,0.35)';
+
     const ambient = new THREE.AmbientLight(0xffffff, 2.0);
     const dir = new THREE.DirectionalLight(0xfff0ff, 2.5);
     dir.position.set(3, 5, 5);
@@ -104,6 +106,7 @@ export class CollectionScene extends BaseScene {
   }
 
   dispose(): void {
+    document.getElementById('scene-dim')!.style.background = 'transparent';
     this.cardMeshes.forEach((cm) => cm.dispose());
     this.cardMeshes = [];
     super.dispose();

@@ -11,7 +11,7 @@
       "rarity": "Common",
       "baseCost": 1.00,
       "drawChance": 0.18,
-      "characterTexture": "",
+      "characterTexture": "assets/character/iron_knight.png",
       "faceTexture": ""
     },
     {
@@ -21,7 +21,7 @@
       "rarity": "Common",
       "baseCost": 1.25,
       "drawChance": 0.17,
-      "characterTexture": "",
+      "characterTexture": "assets/character/crystal_mage.png",
       "faceTexture": ""
     },
     {
@@ -31,7 +31,7 @@
       "rarity": "Uncommon",
       "baseCost": 5.00,
       "drawChance": 0.15,
-      "characterTexture": "",
+      "characterTexture": "assets/character/sea_witch.png",
       "faceTexture": ""
     },
     {
@@ -41,7 +41,7 @@
       "rarity": "Uncommon",
       "baseCost": 6.00,
       "drawChance": 0.13,
-      "characterTexture": "",
+      "characterTexture": "assets/character/storm_giant.png",
       "faceTexture": ""
     },
     {
@@ -51,7 +51,7 @@
       "rarity": "Uncommon",
       "baseCost": 7.50,
       "drawChance": 0.12,
-      "characterTexture": "",
+      "characterTexture": "assets/character/arcane_fox.png",
       "faceTexture": ""
     },
     {
@@ -61,7 +61,7 @@
       "rarity": "Rare",
       "baseCost": 18.00,
       "drawChance": 0.10,
-      "characterTexture": "",
+      "characterTexture": "assets/character/lava_titan.png",
       "faceTexture": ""
     },
     {
@@ -71,7 +71,7 @@
       "rarity": "Rare",
       "baseCost": 22.00,
       "drawChance": 0.08,
-      "characterTexture": "",
+      "characterTexture": "assets/character/frost_queen.png",
       "faceTexture": ""
     },
     {
@@ -81,7 +81,7 @@
       "rarity": "UltraRare",
       "baseCost": 55.00,
       "drawChance": 0.05,
-      "characterTexture": "",
+      "characterTexture": "assets/character/celestial_dragon.png",
       "faceTexture": ""
     },
     {
@@ -91,7 +91,7 @@
       "rarity": "UltraRare",
       "baseCost": 65.00,
       "drawChance": 0.015,
-      "characterTexture": "",
+      "characterTexture": "assets/character/ancient_leviathon.png",
       "faceTexture": ""
     },
     {
@@ -101,7 +101,7 @@
       "rarity": "Secret",
       "baseCost": 150.00,
       "drawChance": 0.005,
-      "characterTexture": "",
+      "characterTexture": "assets/character/god_of_storms.png",
       "faceTexture": ""
     }
   ]

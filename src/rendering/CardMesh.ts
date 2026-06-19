@@ -4,7 +4,7 @@ import { CardInstance } from '../entities/Card.js';
 import { FoilType } from '../types/index.js';
 import { HoloShader } from './HoloShader.js';
 import { createGlossMaterial } from './GlossShader.js';
-import { TextureGenerator } from './TextureGenerator.js';
+import { TextureGenerator, ART_UV } from './TextureGenerator.js';
 
 const CARD_WIDTH = 2.5;
 const CARD_HEIGHT = 3.5;
@@ -26,8 +26,16 @@ export class CardMesh {
     this.backMaterial = new THREE.MeshStandardMaterial({ map: backTex, roughness: 0.2, metalness: 0 });
 
     if (card.foilType !== FoilType.None) {
-      const strength = card.foilType === FoilType.FullHolo ? 1.0 : card.foilType === FoilType.Holo ? 0.75 : 0.45;
-      this.holoShader = new HoloShader(frontTex, strength);
+      const strength = card.foilType === FoilType.FullHolo ? 1.0
+                     : card.foilType === FoilType.Holo     ? 0.75
+                     : 0.45; // ReverseHolo
+      // 1 = art only (Holo), 2 = frame only (ReverseHolo), 3 = everywhere (FullHolo)
+      const mode = card.foilType === FoilType.FullHolo    ? 3
+                 : card.foilType === FoilType.Holo         ? 1
+                 : 2;
+      const artMin = new THREE.Vector2(ART_UV.minX, ART_UV.minY);
+      const artMax = new THREE.Vector2(ART_UV.maxX, ART_UV.maxY);
+      this.holoShader = new HoloShader(frontTex, strength, mode, artMin, artMax);
       this.frontMaterial = this.holoShader.material;
     } else {
       this.frontMaterial = createGlossMaterial(frontTex);
